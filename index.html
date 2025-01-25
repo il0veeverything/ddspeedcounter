@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>加速度センサーサイト</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #000;
+            color: #fff;
+        }
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            margin: 0 5px;
+            cursor: pointer;
+            background-color: #333;
+            color: #fff;
+            border-radius: 5px;
+        }
+        .tab.active {
+            background-color: #06b6d4;
+            color: #000;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        #graph-container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        canvas {
+            background-color: #1e1e1e;
+            border: 2px solid #444;
+            border-radius: 10px;
+        }
+        select, input, button {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 5px 10px;
+        }
+        button:hover {
+            background-color: #444;
+        }
+        input[type="range"] {
+            accent-color: #06b6d4;
+        }
+        label {
+            margin-right: 10px;
+        }
+        #startButton {
+            font-size: 1.5em;
+            padding: 10px 20px;
+            background-color: #06b6d4;
+            color: #000;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            display: block;
+            margin: 20px auto;
+        }
+        #startButton:hover {
+            background-color: #04a0c3;
+        }
+    </style>
+</head>
+<body>
+    <h1>加速度センサーでデータを測定</h1>
+
+    <div class="tabs">
+        <div class="tab active" data-target="graphTab">測定</div>
+        <div class="tab" data-target="settingsTab">設定</div>
+    </div>
+
+    <div id="graphTab" class="tab-content active">
+        <div id="graph-container">
+            <canvas id="accelerometerChart"></canvas>
+        </div>
+        <button id="startButton">計測開始</button>
+        <p>しきい値を超えた回数: <span id="thresholdCount">0</span></p>
+    </div>
+
+    <div id="settingsTab" class="tab-content">
+        <div class="control">
+            <label for="axisSelect">軸の選択: </label>
+            <select id="axisSelect">
+                <option value="x">X軸</option>
+                <option value="y">Y軸</option>
+                <option value="z">Z軸</option>
+            </select>
+        </div>
+
+        <div class="control">
+            <label for="thresholdSlider">しきい値: </label>
+            <input type="range" id="thresholdSlider" min="0" max="20" step="0.1" value="10">
+            <span id="thresholdValue">10</span>
+        </div>
+
+        <div class="control">
+            <label for="cooldownInput">クールダウン (ms): </label>
+            <input type="number" id="cooldownInput" min="0" value="1000">
+        </div>
+
+        <div class="control">
+            <button id="resetButton">リセット</button>
+        </div>
+
+        <div class="control">
+            <label for="darkModeToggle">ダークモード: </label>
+            <input type="checkbox" id="darkModeToggle" checked>
+        </div>
+    </div>
+
+    <audio id="sound1" src="sound1.mp3"></audio>
+    <audio id="sound2" src="sound2.mp3"></audio>
+    <audio id="sound3" src="sound3.mp3"></audio>
+
+    <script>
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                tabContents.forEach(content => {
+                    content.classList.remove('active');
+                    if (content.id === tab.dataset.target) {
+                        content.classList.add('active');
+                    }
+                });
+            });
+        });
+
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        darkModeToggle.addEventListener('change', () => {
+            if (darkModeToggle.checked) {
+                document.body.style.backgroundColor = '#000';
+                document.body.style.color = '#fff';
+            } else {
+                document.body.style.backgroundColor = '#fff';
+                document.body.style.color = '#000';
+            }
+        });
+
+        const ctx = document.getElementById('accelerometerChart').getContext('2d');
+        const accelerometerChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: '加速度',
+                        data: [],
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: '時間',
+                            color: '#fff'
+                        },
+                        ticks: {
+                            color: '#fff'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: '加速度 (m/s²)',
+                            color: '#fff'
+                        },
+                        ticks: {
+                            color: '#fff'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#fff'
+                        }
+                    }
+                }
+            }
+        });
+
+        let threshold = 10;
+        let cooldown = 1000;
+        let thresholdCount = 0;
+        let lastTriggerTime = 0;
+        let selectedAxis = 'x';
+
+        const axisSelect = document.getElementById('axisSelect');
+        const thresholdSlider = document.getElementById('thresholdSlider');
+        const thresholdValue = document.getElementById('thresholdValue');
+        const cooldownInput = document.getElementById('cooldownInput');
+        const startButton = document.getElementById('startButton');
+        const resetButton = document.getElementById('resetButton');
+        const thresholdCountDisplay = document.getElementById('thresholdCount');
+        const sounds = [
+            document.getElementById('sound1'),
+            document.getElementById('sound2'),
+            document.getElementById('sound3')
+        ];
+
+        thresholdSlider.addEventListener('input', () => {
+            threshold = parseFloat(thresholdSlider.value);
+            thresholdValue.textContent = threshold;
+        });
+
+        cooldownInput.addEventListener('input', () => {
+            cooldown = parseInt(cooldownInput.value, 10);
+        });
+
+        axisSelect.addEventListener('change', () => {
+            selectedAxis = axisSelect.value;
+        });
+
+        resetButton.addEventListener('click', () => {
+            thresholdCount = 0;
+            thresholdCountDisplay.textContent = thresholdCount;
+            accelerometerChart.data.labels = [];
+            accelerometerChart.data.datasets[0].data = [];
+            accelerometerChart.update();
+        });
+
+        startButton.addEventListener('click', () => {
+            if (!('Accelerometer' in window)) {
+                alert('加速度センサーはこのデバイスでサポートされていません。');
+                return;
+            }
+
+            const randomSound = sounds[Math.floor(Math.random() * sounds.length)];
+            randomSound.play();
+
+            const accelerometer = new Accelerometer({ frequency: 30 });
+            accelerometer.addEventListener('reading', () => {
+                const value = accelerometer[selectedAxis];
+                const currentTime = Date.now();
+
+                accelerometerChart.data.labels.push(currentTime);
+                accelerometerChart.data.datasets[0].data.push(value);
+                accelerometerChart.update();
+
+                if (Math.abs(value) > threshold && currentTime - lastTriggerTime > cooldown) {
+                    thresholdCount++;
+                    thresholdCountDisplay.textContent = thresholdCount;
+                    lastTriggerTime = currentTime;
+                }
+            });
+
+            accelerometer.start();
+        });
+    </script>
+</body>
+</html>
