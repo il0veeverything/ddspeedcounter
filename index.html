@@ -69,11 +69,27 @@
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            display: block;
-            margin: 20px auto;
         }
         #startButton:hover {
             background-color: #04a0c3;
+        }
+        #resetButton {
+            font-size: 1.2em;
+            padding: 10px 15px;
+            margin-top: 10px;
+            background-color: #ff4500;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        #resetButton:hover {
+            background-color: #e03e00;
+        }
+        #thresholdCount {
+            font-size: 2em;
+            font-weight: bold;
+            color: #06b6d4;
         }
     </style>
 </head>
@@ -89,11 +105,7 @@
         <div id="graph-container">
             <canvas id="accelerometerChart"></canvas>
         </div>
-        <button id="startButton">計測開始</button>
-        <p>しきい値を超えた回数: <span id="thresholdCount">0</span></p>
-    </div>
 
-    <div id="settingsTab" class="tab-content">
         <div class="control">
             <label for="axisSelect">軸の選択: </label>
             <select id="axisSelect">
@@ -109,18 +121,29 @@
             <span id="thresholdValue">10</span>
         </div>
 
+        <p>しきい値を超えた回数: <span id="thresholdCount">0</span></p>
+
         <div class="control">
-            <label for="cooldownInput">クールダウン (ms): </label>
-            <input type="number" id="cooldownInput" min="0" value="1000">
+            <button id="startButton">計測開始</button>
         </div>
 
         <div class="control">
             <button id="resetButton">リセット</button>
         </div>
+    </div>
 
+    <div id="settingsTab" class="tab-content">
         <div class="control">
             <label for="darkModeToggle">ダークモード: </label>
             <input type="checkbox" id="darkModeToggle" checked>
+        </div>
+        <div class="control">
+            <label for="timerStart">タイマー開始時刻 (秒): </label>
+            <input type="number" id="timerStart" min="0" value="0">
+        </div>
+        <div class="control">
+            <label for="timerEnd">タイマー終了時刻 (秒): </label>
+            <input type="number" id="timerEnd" min="0" value="60">
         </div>
     </div>
 
@@ -210,14 +233,17 @@
         let thresholdCount = 0;
         let lastTriggerTime = 0;
         let selectedAxis = 'x';
+        let timerStart = 0;
+        let timerEnd = 60;
 
         const axisSelect = document.getElementById('axisSelect');
         const thresholdSlider = document.getElementById('thresholdSlider');
         const thresholdValue = document.getElementById('thresholdValue');
-        const cooldownInput = document.getElementById('cooldownInput');
         const startButton = document.getElementById('startButton');
         const resetButton = document.getElementById('resetButton');
         const thresholdCountDisplay = document.getElementById('thresholdCount');
+        const timerStartInput = document.getElementById('timerStart');
+        const timerEndInput = document.getElementById('timerEnd');
         const sounds = [
             document.getElementById('sound1'),
             document.getElementById('sound2'),
@@ -229,12 +255,12 @@
             thresholdValue.textContent = threshold;
         });
 
-        cooldownInput.addEventListener('input', () => {
-            cooldown = parseInt(cooldownInput.value, 10);
+        timerStartInput.addEventListener('input', () => {
+            timerStart = parseInt(timerStartInput.value, 10);
         });
 
-        axisSelect.addEventListener('change', () => {
-            selectedAxis = axisSelect.value;
+        timerEndInput.addEventListener('input', () => {
+            timerEnd = parseInt(timerEndInput.value, 10);
         });
 
         resetButton.addEventListener('click', () => {
@@ -251,27 +277,7 @@
                 return;
             }
 
+            thresholdCount = 0;
+            thresholdCountDisplay.textContent = thresholdCount;
+
             const randomSound = sounds[Math.floor(Math.random() * sounds.length)];
-            randomSound.play();
-
-            const accelerometer = new Accelerometer({ frequency: 30 });
-            accelerometer.addEventListener('reading', () => {
-                const value = accelerometer[selectedAxis];
-                const currentTime = Date.now();
-
-                accelerometerChart.data.labels.push(currentTime);
-                accelerometerChart.data.datasets[0].data.push(value);
-                accelerometerChart.update();
-
-                if (Math.abs(value) > threshold && currentTime - lastTriggerTime > cooldown) {
-                    thresholdCount++;
-                    thresholdCountDisplay.textContent = thresholdCount;
-                    lastTriggerTime = currentTime;
-                }
-            });
-
-            accelerometer.start();
-        });
-    </script>
-</body>
-</html>
