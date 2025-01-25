@@ -139,6 +139,12 @@
             <label for="darkModeToggle">ダークモード: </label>
             <input type="checkbox" id="darkModeToggle" checked>
         </div>
+
+        <div class="control">
+            <label for="cooldownSlider">クールダウンタイム (ms): </label>
+            <input type="range" id="cooldownSlider" min="100" max="5000" step="100" value="1000">
+            <span id="cooldownValue">1000</span>
+        </div>
     </div>
 
     <audio id="sound1" src="sound1.mp3"></audio>
@@ -231,6 +237,8 @@
         const axisSelect = document.getElementById('axisSelect');
         const thresholdSlider = document.getElementById('thresholdSlider');
         const thresholdValue = document.getElementById('thresholdValue');
+        const cooldownSlider = document.getElementById('cooldownSlider');
+        const cooldownValue = document.getElementById('cooldownValue');
         const startButton = document.getElementById('startButton');
         const resetButton = document.getElementById('resetButton');
         const thresholdCountDisplay = document.getElementById('thresholdCount');
@@ -245,46 +253,84 @@
             thresholdValue.textContent = threshold;
         });
 
+        cooldownSlider.addEventListener('input', () => {
+            cooldown = parseInt(cooldownSlider.value);
+            cooldownValue.textContent = cooldown;
+        });
+
         resetButton.addEventListener('click', () => {
             thresholdCount = 0;
             thresholdCountDisplay.textContent = `しきい値を超えた回数: ${thresholdCount}`;
-            accelerometerChart.data.labels = [];
-            accelerometerChart.data.datasets[0].data = [];
-            accelerometerChart.update();
         });
 
         startButton.addEventListener('click', () => {
-            if (!('Accelerometer' in window)) {
-                alert('加速度センサーはこのデバイスでサポートされていません。');
-                return;
-            }
-
             thresholdCount = 0;
             thresholdCountDisplay.textContent = `しきい値を超えた回数: ${thresholdCount}`;
 
-            const randomSound = sounds[Math.floor(Math.random() * sounds.length)];
-            randomSound.play();
+            if (navigator.permissions) {
+                navigator.permissions.query({ name: 'accelerometer' }).then(result => {
+                    if (result.state === 'granted') {
+                        startMeasurement();
+                    } else {
+                        alert('加速度センサーへのアクセスが許可されていません');
+                    }
+                });
+            } else {
+                startMeasurement();
+            }
+        });
 
-            const accelerometer = new Accelerometer({ frequency: 60 });
-            accelerometer.addEventListener('reading', () => {
-                const now = Date.now();
-                const value = accelerometer[selectedAxis];
+        function startMeasurement() {
+            if ('Accelerometer' in window) {
+                const accelerometer = new Accelerometer({ frequency: 60 });
+                accelerometer.addEventListener('reading', () => {
+                    const now = Date.now();
 
-                if (Math.abs(value) > threshold && now - lastTriggerTime > cooldown) {
-                    thresholdCount++;
+                    if (selectedAxis === 'x' && Math.abs(accelerometer.x) > threshold && now - lastTriggerTime > cooldown) {
+                        thresholdCount++;
+                        playRandomSound();
+                        lastTriggerTime = now;
+                    } else if (selectedAxis === 'y' && Math.abs(accelerometer.y) > threshold && now - lastTriggerTime > cooldown) {
+                        thresholdCount++;
+                        playRandomSound();
+                        lastTriggerTime = now;
+                    } else if (selectedAxis === 'z' && Math.abs(accelerometer.z) >threshold && now - lastTriggerTime > cooldown) {
+                        thresholdCount++;
+                        playRandomSound();
+                        lastTriggerTime = now;
+                    }
+
                     thresholdCountDisplay.textContent = `しきい値を超えた回数: ${thresholdCount}`;
-                    lastTriggerTime = now;
-                }
 
-                accelerometerChart.data.labels.push('');
-                accelerometerChart.data.datasets[0].data.push(value);
-                if (accelerometerChart.data.labels.length > 50) {
-                    accelerometerChart.data.labels.shift();
-                    accelerometerChart.data.datasets[0].data.shift();
-                }
-                accelerometerChart.update();
-            });
-            accelerometer.start();
+                    const time = new Date().toLocaleTimeString();
+                    accelerometerChart.data.labels.push(time);
+                    accelerometerChart.data.datasets[0].data.push({
+                        x: time,
+                        y: Math.abs(accelerometer[selectedAxis])
+                    });
+
+                    if (accelerometerChart.data.labels.length > 50) {
+                        accelerometerChart.data.labels.shift();
+                        accelerometerChart.data.datasets[0].data.shift();
+                    }
+
+                    accelerometerChart.update();
+                });
+
+                accelerometer.start();
+            } else {
+                alert('このデバイスは加速度センサーをサポートしていません');
+            }
+        }
+
+        function playRandomSound() {
+            const sound = sounds[Math.floor(Math.random() * sounds.length)];
+            sound.currentTime = 0;
+            sound.play();
+        }
+
+        axisSelect.addEventListener('change', () => {
+            selectedAxis = axisSelect.value;
         });
     </script>
 </body>
